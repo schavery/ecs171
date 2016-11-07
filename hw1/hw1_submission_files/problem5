@@ -1,0 +1,27 @@
+function [weights, errterm] = multiregret(X, n, Y)
+	[m,features] = size(X);
+	
+	boldx = ones(m,1+n*features);
+
+	% need to form the vector of polynomial terms
+	% this is bit more complex since we have multiple features now
+    
+    if n >= 1
+        for term = 1:n
+            for jx = 1:features
+                boldx(:,term+1) = X(:,jx).^term;
+            end
+        end
+    end
+
+	% now we can create a weight vector with some fancy matrix math
+	xt = transpose(boldx);
+	weights = (inv(xt * boldx) * (xt * Y)); %#ok<MINV>
+
+	errterm = 0;
+	% now we need to calculate the errors based on our weights.
+	for i = 1:m
+		errterm = errterm + (Y(i,1) - (boldx(i,:) * weights)) ^ 2;
+	end
+
+end

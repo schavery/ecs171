@@ -1,0 +1,229 @@
+%hw1.txt
+
+%{
+Problem 1
+We want the size of the bins to be the same, but with respect to the range of MPG, not with respect to the number of samples that fall into the bin. We avoid the latter situation because then we would have different models with the same MPG value in two different bins.
+
+Thus, here is the code:
+%}
+% auto.dat was modified to remove the names of the vehicles
+% as well as removing the 6 models where displacement was unknown.
+auto = load('-ascii','auto.dat')
+
+% the size in MPG of each bin
+binsize = range(auto(:,1)) / 3
+% > 12.533
+
+% the min and max of auto form the upper and lower boundaries
+% of the bins
+automin = min(auto(:,1))
+automax = max(auto(:,1))
+
+% now we can find the rows that are within the range of the lowest
+% third of MPGs
+low_index = (auto(:,1) < (automin + binsize))
+low = auto(low_index,:)
+max(low)
+% > 21.5
+% this is the threshold for low MPG
+% there are 182 rows in the low category
+
+high_index = (auto(:,1) > (automax - binsize))
+high = auto(high_index,:)
+min(high)
+% > 34.1
+% there are 42 rows in the high MPG category
+% which leaves 392 - 182 - 42 = 168 in the medium category
+
+%{
+The thresholds for MPG:
+9 <= x <= 21.5 : low
+21.5 < x < 34.1 : medium
+34.1 <= x <= 46.6 : high
+%}
+
+%{
+Problem 2
+The best predictor of MPG is either horsepower, weight, or displacement. These all have a faily close relationship with MPG, but it's difficult to determine exactly which is the best from the graph.
+
+I manually created the vector of classifications of the rows, by merging the low_index and high_index in a text editor, and replacing the remaining rows as the indices of the medium category.
+
+Using the PMTK3 tooolbox:
+%}
+% set up the names of each column
+vnames = {'mpg','cylinders','displacement','horsepower','weight','acceleration','model year','origin'}
+
+% set up the marks to use in the plot
+% red = low, blue = medium, green = high
+% not sure what the 'k+' is for
+plotsymbol = {'r.','b.','g.','k+'}
+
+% run the plot,
+% y is the vector of classes
+pscatter(auto, 'y', y, 'vnames', vnames, 'plotsymbol', plotsymbol)
+
+%{
+Problem 3
+Our dependent variable is MPG, and if we want to have a polynomial basis on the rest of the data set, then we want to be able to support polynomials of order n (which will be specified when we execute this function). For example, if we have a vector of features corresponding to the first sample in the set, 
+x_1 = {8,307.0,130.0,3504.,12.0,70,1}
+and x_1_1 = 8, x_1_2 = 307.0, ... and our dependent variable y in this case would be y_1 = 18.0.
+Our function should be able to regress given a independent variable vector (which is only one value, not a vector of features), the order of the polynomial, and the dependent variable.
+%}
+
+function [weights, errterm] = regrets(X, n, Y)
+	%REGRETS polynomial in n OLS calculator
+	% just for the sake of seeing what we're doing
+	% 1 * w_0 + x_i * w_1 + x_i^2 * w_2 + ... + x_i^n * w_n
+	
+	m = length(X);
+	boldx = zeros(m,n);
+
+	% need to form the vector of polynomial terms
+	for term = 0:n
+		boldx(:,term+1) = X.^term;
+	end
+
+	% now we can create a weight vector with some fancy matrix math
+	xt = transpose(boldx);
+	weights = ((xt * boldx)^(-1) * (xt * Y));
+
+	errterm = 0;
+	% now we need to calculate the errors based on our weights.
+	% im pretty confident that the reversal of w^t*x is just
+	% an artifact of the way matlab deals with arrays, and that its still correct
+	for i = 1:m
+		errterm = errterm + (Y(i,1) - (boldx(i,:) * weights)) ^ 2;
+	end
+end
+
+
+%{
+Problem 4
+Using the following code, I generated a 22x7 matrix of the RSS, which alternates between training and testing errors for the same order.
+The minimum RSS was the training error on order 2, followed by training on order 1, and then testing error on order 2.
+My conclusion is that 2nd order performs the best.
+Using the testing error as the criteria for selecting the most informative feature, the minimum RSS generated at the 2nd order was on displacement.
+%}
+train = auto(1:300,:);
+test = auto(301:392,:);
+
+testcount = length(test(:,1));
+
+errorCake = zeros(22,7);
+figure
+
+for i = 2:length(train(1,:))
+	subplot(3,3,i-1);
+	plot(test(:,i),test(:,1),'b.');
+	xlabel(vnames(i));
+	
+	Xv = sort(test(:,i));
+	for n = 0:10 %#ok<ALIGN>
+		hold all;
+
+		[weights,errorCake(2*n+1,i-1)] = regrets(train(:,i),n,train(:,1));
+		
+		% get the nth degree polynomial of ith feature
+		polyn = ones(testcount,n+1);
+		for term = 0:n
+			polyn(:,term+1) = test(:,i).^term;
+		end
+			
+		for ii = 1:testcount %#ok<ALIGN>
+			thisError = (test(ii,1) - (transpose(weights) * transpose(polyn(ii,:)))) ^ 2;
+			errorCake(2*n+2,i-1) = errorCake(2*n+2,i-1) + thisError;
+		end
+		
+		p = fliplr(transpose(weights));
+		Yv = polyval(p,Xv);
+		
+		axis([min(test(:,i))-2,max(test(:,i))+2,min(test(:,1))-2,max(test(:,1))+2]);
+		plot(Xv,Yv);
+	end
+	
+	hold off
+end
+
+% table of errors included on the other tab.
+
+%{
+	Problem 5.
+	training			test
+0	11983.2958666667	14499.0575342222
+1	2138.01747578572	3069.02396910692
+2	2662.77880441783	2596357829.01521
+%}
+
+function [weights, errterm] = multiregret(X, n, Y)
+	[m,features] = size(X);
+	
+	boldx = ones(m,1+n*features);
+
+	% need to form the vector of polynomial terms
+	% this is bit more complex since we have multiple features now
+    
+    if n >= 1
+        for term = 1:n
+            for jx = 1:features
+                boldx(:,(term-1)*jx+jx+1) = X(:,jx).^term;
+            end
+        end
+    end
+
+	% now we can create a weight vector with some fancy matrix math
+	xt = transpose(boldx);
+	weights = (pinv(xt * boldx) * (xt * Y));
+
+	errterm = 0;
+	% now we need to calculate the errors based on our weights.
+	for i = 1:m
+		errterm = errterm + (Y(i,1) - (boldx(i,:) * weights)) ^ 2;
+	end
+
+end
+
+train = auto(1:300,:);
+test = auto(301:392,:);
+
+ytrain = train(:,1);
+xtrain = train(:,2:8);
+
+ytest = test(:,1);
+xtest = test(:,2:8);
+
+testcount = length(ytest);
+
+errors = zeros(1,6);
+
+% generate the regressions for zeroth order
+[w0,errors(1,1)]=multiregret(xtrain,0,ytrain);
+
+% now we find the RSS on the test values
+for n = 1:testcount
+    ntherror = (ytest(n) - w0)^2;
+    errors(1,2) = errors(1,2) + ntherror;
+end
+
+% first order
+[w1,errors(1,3)]=multiregret(xtrain,1,ytrain);
+
+% the feature vector is now necessary
+for n = 1:testcount
+    fv = [1,xtest(n,:)];
+    
+    ntherror = (ytest(n) - (fv * w1))^2;
+    errors(1,4) = errors(1,4) + ntherror;
+end
+
+% second order
+[w2,errors(1,5)]=multiregret(xtrain,2,ytrain);
+fv = ones(1,2*length(xtest(1,:))+1);
+
+for n = 1:testcount
+    fv = [1,xtest(n,:),xtest(n,:).^2];
+    ntherror = (ytest(n) - (fv * w2))^2;
+    errors(1,6) = errors(1,6) + ntherror;
+end
+
+
+% Problem 6
